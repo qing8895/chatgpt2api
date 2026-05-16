@@ -44,6 +44,23 @@ type AccountRefreshResponse = {
   errors: Array<{ access_token: string; error: string }>;
 };
 
+export type AccountRefreshJob = {
+  running: boolean;
+  status: "idle" | "running" | "finished" | "error";
+  total: number;
+  processed: number;
+  refreshed: number;
+  failed: number;
+  errors: Array<{ token?: string; access_token?: string; error: string }>;
+  started_at?: string | null;
+  finished_at?: string | null;
+};
+
+type AccountRefreshJobResponse = {
+  items: Account[];
+  job: AccountRefreshJob;
+};
+
 type AccountUpdateResponse = {
   item: Account;
   items: Account[];
@@ -268,11 +285,22 @@ export async function deleteAccounts(tokens: string[]) {
   });
 }
 
-export async function refreshAccounts(accessTokens: string[]) {
+export async function refreshAccounts(accessTokens: string[], options?: { background?: boolean }) {
   return httpRequest<AccountRefreshResponse>("/api/accounts/refresh", {
     method: "POST",
-    body: { access_tokens: accessTokens },
+    body: { access_tokens: accessTokens, ...(options?.background ? { background: true } : {}) },
   });
+}
+
+export async function refreshAccountsInBackground(accessTokens: string[] = []) {
+  return httpRequest<AccountRefreshJobResponse>("/api/accounts/refresh", {
+    method: "POST",
+    body: { access_tokens: accessTokens, background: true },
+  });
+}
+
+export async function fetchAccountRefreshJob() {
+  return httpRequest<AccountRefreshJobResponse>("/api/accounts/refresh");
 }
 
 export async function updateAccount(

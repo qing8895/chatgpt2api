@@ -163,7 +163,7 @@ function taskDataToStoredImage(image: StoredImage, task: ImageTask): StoredImage
       ...image,
       taskId: task.id,
       status: "success",
-      b64_json: first.b64_json,
+      b64_json: first.url ? undefined : first.b64_json,
       url: first.url,
       revised_prompt: first.revised_prompt,
       error: undefined,

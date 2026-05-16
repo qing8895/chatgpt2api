@@ -32,11 +32,15 @@ cd chatgpt2api
 docker compose up -d
 ```
 
+默认会拉取 `qing8895/chatgpt2api:latest` 镜像运行。
+
 启动前请先在 `config.json` 中设置 `auth-key`，也可以在 `docker-compose.yml` 中通过 `CHATGPT2API_AUTH_KEY` 覆盖。
 
 - Web 面板：`http://localhost:3000`
 - API 地址：`http://localhost:3000/v1`
 - 数据目录：`./data`
+
+如需使用预构建镜像或后续只替换镜像升级，见 [Docker 部署说明](./docs/docker-deploy.md)。
 
 ### 本地开发
 

@@ -44,6 +44,7 @@ class AccountDeleteRequest(BaseModel):
 
 class AccountRefreshRequest(BaseModel):
     access_tokens: list[str] = Field(default_factory=list)
+    background: bool = False
 
 
 class AccountUpdateRequest(BaseModel):
@@ -173,11 +174,18 @@ def create_router() -> APIRouter:
     async def refresh_accounts(body: AccountRefreshRequest, authorization: str | None = Header(default=None)):
         require_admin(authorization)
         access_tokens = [str(token or "").strip() for token in body.access_tokens if str(token or "").strip()]
+        if body.background:
+            return {"job": account_service.start_refresh_job(access_tokens or None), "items": account_service.list_accounts()}
         if not access_tokens:
             access_tokens = account_service.list_tokens()
         if not access_tokens:
             raise HTTPException(status_code=400, detail={"error": "access_tokens is required"})
         return account_service.refresh_accounts(access_tokens)
+
+    @router.get("/api/accounts/refresh")
+    async def get_refresh_accounts_job(authorization: str | None = Header(default=None)):
+        require_admin(authorization)
+        return {"job": account_service.get_refresh_job(), "items": account_service.list_accounts()}
 
     @router.post("/api/accounts/update")
     async def update_account(body: AccountUpdateRequest, authorization: str | None = Header(default=None)):

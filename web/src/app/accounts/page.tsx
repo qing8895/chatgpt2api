@@ -42,10 +42,13 @@ import {
 } from "@/components/ui/select";
 import {
   deleteAccounts,
+  fetchAccountRefreshJob,
   fetchAccounts,
   refreshAccounts,
+  refreshAccountsInBackground,
   updateAccount,
   type Account,
+  type AccountRefreshJob,
   type AccountStatus,
 } from "@/lib/api";
 import { useAuthGuard } from "@/lib/use-auth-guard";
@@ -179,6 +182,8 @@ function AccountsPageContent() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [refreshJob, setRefreshJob] = useState<AccountRefreshJob | null>(null);
+  const wasRefreshJobRunningRef = useRef(false);
 
   const loadAccounts = async (silent = false) => {
     if (!silent) {
@@ -205,6 +210,39 @@ function AccountsPageContent() {
     didLoadRef.current = true;
     void loadAccounts();
   }, []);
+
+  useEffect(() => {
+    if (!refreshJob?.running) {
+      return;
+    }
+
+    wasRefreshJobRunningRef.current = true;
+    const timer = window.setInterval(() => {
+      void fetchAccountRefreshJob()
+        .then((data) => {
+          setAccounts(data.items);
+          setRefreshJob(data.job);
+          setSelectedIds((prev) => prev.filter((id) => data.items.some((item) => item.access_token === id)));
+          if (!data.job.running && wasRefreshJobRunningRef.current) {
+            wasRefreshJobRunningRef.current = false;
+            if (data.job.failed > 0) {
+              const firstError = data.job.errors[0]?.error;
+              toast.error(
+                `后台刷新完成：成功 ${data.job.refreshed} 个，失败 ${data.job.failed} 个${firstError ? `，首个错误：${firstError}` : ""}`,
+              );
+            } else {
+              toast.success(`后台刷新完成：成功 ${data.job.refreshed} 个账户`);
+            }
+          }
+        })
+        .catch((error) => {
+          const message = error instanceof Error ? error.message : "读取后台刷新进度失败";
+          toast.error(message);
+        });
+    }, 3000);
+
+    return () => window.clearInterval(timer);
+  }, [refreshJob?.running]);
 
   const filteredAccounts = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -313,6 +351,31 @@ function AccountsPageContent() {
     }
   };
 
+  const handleRefreshAllAccounts = async () => {
+    if (accounts.length === 0) {
+      toast.error("没有需要刷新的账户");
+      return;
+    }
+
+    setIsRefreshing(true);
+    try {
+      const data = await refreshAccountsInBackground();
+      setAccounts(data.items);
+      setRefreshJob(data.job);
+      wasRefreshJobRunningRef.current = Boolean(data.job.running);
+      if (data.job.running) {
+        toast.success(`已开始后台分批刷新 ${data.job.total} 个账户`);
+      } else {
+        toast.success("没有需要刷新的账户");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "启动后台刷新失败";
+      toast.error(message);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const openEditDialog = (account: Account) => {
     setEditingAccount(account);
     setEditStatus(account.status);
@@ -363,7 +426,7 @@ function AccountsPageContent() {
             variant="outline"
             className="h-10 rounded-xl border-stone-200 bg-white/80 px-4 text-stone-700 hover:bg-white"
             onClick={() => void loadAccounts()}
-            disabled={isLoading || isRefreshing || isDeleting}
+            disabled={isLoading || isRefreshing || isDeleting || refreshJob?.running}
           >
             <RefreshCw className={cn("size-4", isLoading ? "animate-spin" : "")} />
             刷新
@@ -371,14 +434,14 @@ function AccountsPageContent() {
           <Button
             variant="outline"
             className="h-10 rounded-xl border-stone-200 bg-white/80 px-4 text-stone-700 hover:bg-white"
-            onClick={() => void handleRefreshAccounts(accounts.map((item) => item.access_token))}
-            disabled={isLoading || isRefreshing || isDeleting || accounts.length === 0}
+            onClick={() => void handleRefreshAllAccounts()}
+            disabled={isLoading || isRefreshing || isDeleting || refreshJob?.running || accounts.length === 0}
           >
-            <RefreshCw className={cn("size-4", isRefreshing ? "animate-spin" : "")} />
-            一键刷新所有账号信息和额度
+            <RefreshCw className={cn("size-4", isRefreshing || refreshJob?.running ? "animate-spin" : "")} />
+            {refreshJob?.running ? `后台刷新 ${refreshJob.processed}/${refreshJob.total}` : "一键刷新所有账号信息和额度"}
           </Button>
           <AccountImportDialog
-            disabled={isLoading || isRefreshing || isDeleting}
+            disabled={isLoading || isRefreshing || isDeleting || refreshJob?.running}
             onImported={(items) => {
               setAccounts(items);
               setSelectedIds([]);
@@ -557,9 +620,9 @@ function AccountsPageContent() {
                   variant="ghost"
                   className="h-8 rounded-lg px-3 text-stone-500 hover:bg-stone-100"
                   onClick={() => void handleRefreshAccounts(selectedTokens)}
-                  disabled={selectedTokens.length === 0 || isRefreshing}
+                  disabled={selectedTokens.length === 0 || isRefreshing || refreshJob?.running}
                 >
-                  {isRefreshing ? <LoaderCircle className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+                  {isRefreshing || refreshJob?.running ? <LoaderCircle className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
                   刷新选中账号信息和额度
                 </Button>
                 <Button
@@ -697,7 +760,7 @@ function AccountsPageContent() {
                               type="button"
                               className="rounded-lg p-2 transition hover:bg-stone-100 hover:text-stone-700"
                               onClick={() => void handleRefreshAccounts([account.access_token])}
-                              disabled={isRefreshing}
+                              disabled={isRefreshing || refreshJob?.running}
                             >
                               <RefreshCw className={cn("size-4", isRefreshing ? "animate-spin" : "")} />
                             </button>

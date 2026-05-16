@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from threading import Condition, Lock
+from threading import Condition, Lock, Thread
 from typing import Any
 from datetime import datetime
 
@@ -24,6 +24,22 @@ class AccountService:
         self._index = 0
         self._accounts = self._load_accounts()
         self._image_inflight: dict[str, int] = {}
+        self._refresh_job_lock = Lock()
+        self._refresh_job: dict[str, Any] = self._empty_refresh_job()
+
+    @staticmethod
+    def _empty_refresh_job() -> dict[str, Any]:
+        return {
+            "running": False,
+            "status": "idle",
+            "total": 0,
+            "processed": 0,
+            "refreshed": 0,
+            "failed": 0,
+            "errors": [],
+            "started_at": None,
+            "finished_at": None,
+        }
 
     def _load_accounts(self) -> dict[str, dict]:
         accounts = self.storage.load_accounts()
@@ -337,6 +353,64 @@ class AccountService:
             "errors": errors,
             "items": self.list_accounts(),
         }
+
+    def get_refresh_job(self) -> dict[str, Any]:
+        with self._refresh_job_lock:
+            return self._refresh_job_snapshot_locked()
+
+    def _refresh_job_snapshot_locked(self) -> dict[str, Any]:
+        return {**self._refresh_job, "errors": list(self._refresh_job.get("errors") or [])}
+
+    def start_refresh_job(self, access_tokens: list[str] | None = None, batch_size: int = 20) -> dict[str, Any]:
+        tokens = list(dict.fromkeys(token for token in (access_tokens or self.list_tokens()) if token))
+        if not tokens:
+            with self._refresh_job_lock:
+                self._refresh_job = {
+                    **self._empty_refresh_job(),
+                    "status": "finished",
+                    "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                }
+                return self._refresh_job_snapshot_locked()
+
+        with self._refresh_job_lock:
+            if self._refresh_job.get("running"):
+                return self._refresh_job_snapshot_locked()
+            self._refresh_job = {
+                **self._empty_refresh_job(),
+                "running": True,
+                "status": "running",
+                "total": len(tokens),
+                "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+
+        thread = Thread(target=self._run_refresh_job, args=(tokens, max(1, batch_size)), name="account-refresh-job", daemon=True)
+        thread.start()
+        return self.get_refresh_job()
+
+    def _run_refresh_job(self, tokens: list[str], batch_size: int) -> None:
+        try:
+            for index in range(0, len(tokens), batch_size):
+                batch = tokens[index:index + batch_size]
+                result = self.refresh_accounts(batch)
+                errors = result.get("errors") if isinstance(result.get("errors"), list) else []
+                with self._refresh_job_lock:
+                    self._refresh_job["processed"] = min(len(tokens), int(self._refresh_job.get("processed") or 0) + len(batch))
+                    self._refresh_job["refreshed"] = int(self._refresh_job.get("refreshed") or 0) + int(result.get("refreshed") or 0)
+                    self._refresh_job["failed"] = int(self._refresh_job.get("failed") or 0) + len(errors)
+                    self._refresh_job["errors"] = [*list(self._refresh_job.get("errors") or []), *errors][-20:]
+            with self._refresh_job_lock:
+                self._refresh_job["running"] = False
+                self._refresh_job["status"] = "finished"
+                self._refresh_job["finished_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        except Exception as exc:
+            with self._refresh_job_lock:
+                self._refresh_job["running"] = False
+                self._refresh_job["status"] = "error"
+                self._refresh_job["finished_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                self._refresh_job["errors"] = [
+                    *list(self._refresh_job.get("errors") or []),
+                    {"token": "batch", "error": str(exc) or "refresh job failed"},
+                ][-20:]
 
 
 account_service = AccountService(config.get_storage_backend())

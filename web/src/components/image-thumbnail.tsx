@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactEventHandler } from "react";
 import { useEffect, useMemo, useState } from "react";
 
 import { cn } from "@/lib/utils";
@@ -10,6 +11,7 @@ type ImageThumbnailProps = {
   alt?: string;
   className?: string;
   imageClassName?: string;
+  onLoad?: ReactEventHandler<HTMLImageElement>;
 };
 
 export function getImageThumbnailUrl(src: string) {
@@ -19,7 +21,7 @@ export function getImageThumbnailUrl(src: string) {
   return `${src.slice(0, index)}/image-thumbnails/${src.slice(index + marker.length)}`;
 }
 
-export function ImageThumbnail({ src, thumbnailSrc, alt = "", className, imageClassName }: ImageThumbnailProps) {
+export function ImageThumbnail({ src, thumbnailSrc, alt = "", className, imageClassName, onLoad }: ImageThumbnailProps) {
   const initialSrc = useMemo(() => thumbnailSrc || getImageThumbnailUrl(src), [src, thumbnailSrc]);
   const [currentSrc, setCurrentSrc] = useState(initialSrc);
 
@@ -40,6 +42,7 @@ export function ImageThumbnail({ src, thumbnailSrc, alt = "", className, imageCl
             setCurrentSrc(src);
           }
         }}
+        onLoad={onLoad}
       />
     </span>
   );

@@ -1,0 +1,14 @@
+services:
+  app:
+    image: ${CHATGPT2API_IMAGE:-qing8895/chatgpt2api:latest}
+    container_name: chatgpt2api
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    volumes:
+      - ./data:/app/data
+      - ./config.json:/app/config.json
+    environment:
+      - STORAGE_BACKEND=json
+      # - CHATGPT2API_AUTH_KEY=your_secret_key
+      # - CHATGPT2API_BASE_URL=https://your-domain.com

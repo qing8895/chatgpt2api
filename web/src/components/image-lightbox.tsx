@@ -83,6 +83,42 @@ function normalizeTransform(transform: ImageTransform) {
   };
 }
 
+function dataUrlToBlob(dataUrl: string) {
+  const [header, payload = ""] = dataUrl.split(",", 2);
+  const mime = header.match(/^data:(.*?);base64$/)?.[1] || "image/png";
+  const binary = atob(payload);
+  const chunkSize = 8192;
+  const chunks: Uint8Array[] = [];
+  for (let offset = 0; offset < binary.length; offset += chunkSize) {
+    const slice = binary.slice(offset, offset + chunkSize);
+    const bytes = new Uint8Array(slice.length);
+    for (let index = 0; index < slice.length; index += 1) {
+      bytes[index] = slice.charCodeAt(index);
+    }
+    chunks.push(bytes);
+  }
+  return new Blob(chunks, { type: mime });
+}
+
+async function downloadImage(src: string, filename: string) {
+  const blob = src.startsWith("data:")
+    ? dataUrlToBlob(src)
+    : await fetch(src).then((response) => {
+        if (!response.ok) {
+          throw new Error("图片下载失败");
+        }
+        return response.blob();
+      });
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(objectUrl);
+}
+
 export function ImageLightbox({
   images,
   currentIndex,
@@ -180,10 +216,7 @@ export function ImageLightbox({
 
   const handleDownload = useCallback(() => {
     if (!current) return;
-    const link = document.createElement("a");
-    link.href = current.src;
-    link.download = `image-${current.id}.png`;
-    link.click();
+    void downloadImage(current.src, `image-${current.id}.png`);
   }, [current]);
 
   const toggleZoom = useCallback(() => {

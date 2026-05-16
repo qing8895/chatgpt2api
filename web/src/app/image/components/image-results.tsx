@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import { Clock3, Download, LoaderCircle, RotateCcw, Sparkles, Trash2 } from "lucide-react";
 
+import { ImageThumbnail } from "@/components/image-thumbnail";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ImageConversation, ImageTurnStatus, StoredImage, StoredReferenceImage } from "@/store/image-conversations";
@@ -27,22 +27,38 @@ type ImageResultsProps = {
 };
 
 function getStoredImageSrc(image: StoredImage) {
-  if (image.b64_json) {
-    return `data:image/png;base64,${image.b64_json}`;
+  return image.url || getStoredImageDataUrl(image);
+}
+
+function getStoredImageDataUrl(image: StoredImage) {
+  return image.b64_json ? `data:image/png;base64,${image.b64_json}` : "";
+}
+
+function base64ToBlob(base64: string, type = "image/png") {
+  const binary = atob(base64);
+  const chunkSize = 8192;
+  const chunks: Uint8Array[] = [];
+  for (let offset = 0; offset < binary.length; offset += chunkSize) {
+    const slice = binary.slice(offset, offset + chunkSize);
+    const bytes = new Uint8Array(slice.length);
+    for (let index = 0; index < slice.length; index += 1) {
+      bytes[index] = slice.charCodeAt(index);
+    }
+    chunks.push(bytes);
   }
-  return image.url || "";
+  return new Blob(chunks, { type });
 }
 
 async function downloadStoredImage(image: StoredImage, index: number) {
   let blob: Blob;
-  if (image.b64_json) {
-    const binary = atob(image.b64_json);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    blob = new Blob([bytes], { type: "image/png" });
-  } else if (image.url) {
+  if (image.url) {
     const res = await fetch(image.url);
+    if (!res.ok) {
+      throw new Error("图片下载失败");
+    }
     blob = await res.blob();
+  } else if (image.b64_json) {
+    blob = base64ToBlob(image.b64_json);
   } else {
     return;
   }
@@ -67,18 +83,6 @@ export function ImageResults({
   onRetryImage,
   formatConversationTime,
 }: ImageResultsProps) {
-  const [imageDimensions, setImageDimensions] = useState<Record<string, string>>({});
-
-  const updateImageDimensions = (id: string, width: number, height: number) => {
-    const dimensions = formatImageDimensions(width, height);
-    setImageDimensions((current) => {
-      if (current[id] === dimensions) {
-        return current;
-      }
-      return { ...current, [id]: dimensions };
-    });
-  };
-
   if (!selectedConversation) {
     return (
       <div className="flex h-full min-h-[260px] items-center justify-center text-center sm:min-h-[420px]">
@@ -119,7 +123,6 @@ export function ImageResults({
                   id: image.id,
                   src,
                   sizeLabel: image.b64_json ? formatBase64ImageSize(image.b64_json) : undefined,
-                  dimensions: imageDimensions[image.id],
                 },
               ]
             : [];
@@ -210,8 +213,7 @@ export function ImageResults({
                       if (image.status === "success" && imageSrc) {
                         const currentIndex = successfulTurnImages.findIndex((item) => item.id === image.id);
                         const sizeLabel = image.b64_json ? formatBase64ImageSize(image.b64_json) : "";
-                        const dimensions = imageDimensions[image.id];
-                        const imageMeta = [sizeLabel, dimensions].filter(Boolean).join(" · ");
+                        const imageMeta = [sizeLabel].filter(Boolean).join(" · ");
 
                         return (
                           <div
@@ -223,17 +225,11 @@ export function ImageResults({
                               onClick={() => onOpenLightbox(successfulTurnImages, currentIndex)}
                               className="group block aspect-square w-full cursor-zoom-in overflow-hidden rounded-xl sm:aspect-auto"
                             >
-                              <img
+                              <ImageThumbnail
                                 src={imageSrc}
                                 alt={`Generated result ${index + 1}`}
-                                className="block h-full w-full object-cover transition duration-200 group-hover:brightness-90 sm:h-auto sm:object-contain"
-                                onLoad={(event) => {
-                                  updateImageDimensions(
-                                    image.id,
-                                    event.currentTarget.naturalWidth,
-                                    event.currentTarget.naturalHeight,
-                                  );
-                                }}
+                                className="h-full w-full sm:h-auto"
+                                imageClassName="block h-full w-full object-cover transition duration-200 group-hover:brightness-90 sm:h-auto sm:object-contain"
                               />
                             </button>
                             <div className="flex flex-col gap-1 px-0.5 py-1 text-[10px] sm:flex-row sm:items-center sm:justify-between sm:gap-2 sm:px-3 sm:py-3 sm:text-xs">
@@ -384,8 +380,4 @@ function formatBase64ImageSize(base64: string) {
     return `${(bytes / 1024).toFixed(1)} KB`;
   }
   return `${bytes} B`;
-}
-
-function formatImageDimensions(width: number, height: number) {
-  return `${width} x ${height}`;
 }
