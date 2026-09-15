@@ -39,6 +39,7 @@ export function ConfigCard() {
   const setBaseUrl = useSettingsStore((state) => state.setBaseUrl);
   const setGlobalSystemPrompt = useSettingsStore((state) => state.setGlobalSystemPrompt);
   const setDefaultUpstreamModelName = useSettingsStore((state) => state.setDefaultUpstreamModelName);
+  const setCodexImagesMainModel = useSettingsStore((state) => state.setCodexImagesMainModel);
   const setDefaultThinkingEffort = useSettingsStore((state) => state.setDefaultThinkingEffort);
   const setSensitiveWordsText = useSettingsStore((state) => state.setSensitiveWordsText);
   const setAIReviewField = useSettingsStore((state) => state.setAIReviewField);
@@ -158,6 +159,16 @@ export function ConfigCard() {
               className="h-10 rounded-xl border-stone-200 bg-white"
             />
             <p className="text-xs text-stone-500">gpt-image-2 发起图片请求时使用的上游模型名称，默认 gpt-5-5。</p>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm text-stone-700">Codex 图片主控模型</label>
+            <Input
+              value={String(config?.codex_images_main_model || "")}
+              onChange={(event) => setCodexImagesMainModel(event.target.value)}
+              placeholder="gpt-5.6-luna"
+              className="h-10 rounded-xl border-stone-200 bg-white"
+            />
+            <p className="text-xs text-stone-500">Image 2.5 通过 Responses 图片工具请求时使用的主控模型。</p>
           </div>
           <div className="space-y-2">
             <label className="text-sm text-stone-700">默认思考强度</label>

@@ -62,6 +62,8 @@ const qualityOptions = [
   { value: "low", label: "低" },
   { value: "medium", label: "中" },
   { value: "high", label: "高" },
+  { value: "xhigh", label: "超高" },
+  { value: "max", label: "最高" },
 ];
 const aspectOptions = [
   { ratio: "1:1", tier: "1k", width: "1024", height: "1024", label: "1:1", icon: Square },
@@ -127,7 +129,8 @@ export function ImageComposer({
   const ratioLabel = imageRatio === "auto" ? "auto" : `${imageRatio}(${imageTier})`;
   const imageSizeLabel = `${qualityLabel} · ${ratioLabel} · ${imageCount || 1} 张`;
   const selectedModelLabel = modelOptions.find((option) => option.value === imageModel)?.label || imageModel;
-  const isCodexModel = imageModel.toLowerCase().includes("codex");
+  const normalizedImageModel = imageModel.toLowerCase();
+  const isCodexModel = normalizedImageModel.includes("codex") || normalizedImageModel.includes("image-2.5");
 
   useEffect(() => {
     if (!isSizeMenuOpen) {

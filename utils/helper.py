@@ -14,9 +14,16 @@ from fastapi import HTTPException
 from services.proxy_service import proxy_settings
 from utils.log import logger
 
-BASE_IMAGE_MODELS = {"gpt-image-2", "codex-gpt-image-2"}
 IMAGE_MODEL_PLAN_TYPES = ("plus", "team", "pro")
 CODEX_IMAGE_MODEL = "codex-gpt-image-2"
+GPT_IMAGE_25_MODELS = frozenset({
+    "gpt-image-2.5-flare",
+    "gpt-image-2.5-flare-2026-09-08",
+    "gpt-image-2.5-sunburst",
+    "gpt-image-2.5-sunburst-2026-09-08",
+})
+CODEX_RESPONSE_IMAGE_MODELS = frozenset({CODEX_IMAGE_MODEL, *GPT_IMAGE_25_MODELS})
+BASE_IMAGE_MODELS = {"gpt-image-2", *CODEX_RESPONSE_IMAGE_MODELS}
 PREFIXED_CODEX_IMAGE_MODELS = {
     f"{plan_type}-{CODEX_IMAGE_MODEL}"
     for plan_type in IMAGE_MODEL_PLAN_TYPES
@@ -128,7 +135,15 @@ def is_supported_image_model(model: object) -> bool:
 
 def is_codex_image_model(model: object) -> bool:
     _, base_model = split_image_model(model)
-    return base_model == CODEX_IMAGE_MODEL
+    return base_model in CODEX_RESPONSE_IMAGE_MODELS
+
+
+def codex_image_tool_model(model: object) -> str | None:
+    """Return the image_generation tool model for a Codex Responses image model."""
+    _, base_model = split_image_model(model)
+    if base_model == CODEX_IMAGE_MODEL:
+        return "gpt-image-2"
+    return base_model if base_model in GPT_IMAGE_25_MODELS else None
 
 
 def is_image_chat_request(body: dict[str, object]) -> bool:

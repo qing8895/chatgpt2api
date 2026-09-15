@@ -23,7 +23,15 @@ from PIL import Image
 from services.account_service import account_service
 from services.config import config
 from services.proxy_service import proxy_settings
-from utils.helper import UpstreamHTTPError, ensure_ok, iter_sse_payloads, new_uuid, split_image_model
+from utils.helper import (
+    CODEX_IMAGE_MODEL,
+    UpstreamHTTPError,
+    codex_image_tool_model,
+    ensure_ok,
+    iter_sse_payloads,
+    new_uuid,
+    split_image_model,
+)
 from utils.log import logger
 from utils.pow import build_legacy_requirements_token, build_proof_token, parse_pow_resources
 from utils.turnstile import solve_turnstile_token
@@ -68,8 +76,6 @@ class ChatRequirements:
 DEFAULT_CLIENT_VERSION = "prod-a194cd50d4416d3c0b47c740f206b12ce60f5887"
 DEFAULT_CLIENT_BUILD_NUMBER = "6708908"
 DEFAULT_POW_SCRIPT = "https://chatgpt.com/backend-api/sentinel/sdk.js"
-CODEX_IMAGE_MODEL = "codex-gpt-image-2"
-CODEX_RESPONSES_MODEL = "gpt-5.5"
 SEARCH_MODEL = "gpt-5-5"
 SEARCH_TIMEOUT_SECS = 300.0
 SEARCH_POLL_INTERVAL_SECS = 3.0
@@ -778,19 +784,23 @@ class OpenAIBackendAPI:
             images: list[str] | None = None,
             size: str | None = None,
             quality: str = "auto",
+            model: str = CODEX_IMAGE_MODEL,
     ) -> Iterator[Dict[str, Any]]:
         if not self.access_token:
             raise RuntimeError("access_token is required for codex image endpoints")
         self._ensure_codex_source_account()
+        tool_model = codex_image_tool_model(model)
+        if not tool_model:
+            raise ValueError(f"unsupported Codex image model: {model}")
         path = "/backend-api/codex/responses"
         payload = {
-            "model": CODEX_RESPONSES_MODEL,
+            "model": config.codex_images_main_model,
             "instructions": CODEX_RESPONSES_INSTRUCTIONS,
             "store": False,
             "input": self._codex_image_input(prompt, images or []),
             "tools": [{
                 "type": "image_generation",
-                "model": "gpt-image-2",
+                "model": tool_model,
                 "action": "edit" if images else "generate",
                 "size": str(size or "1024x1024"),
                 "quality": str(quality or "auto"),

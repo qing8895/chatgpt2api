@@ -4,7 +4,7 @@ from typing import Any
 
 from services.account_service import account_service
 from services.model_service import model_catalog_service
-from utils.helper import CODEX_IMAGE_MODEL
+from utils.helper import CODEX_IMAGE_MODEL, GPT_IMAGE_25_MODELS
 
 
 def list_models() -> dict[str, Any]:
@@ -13,7 +13,9 @@ def list_models() -> dict[str, Any]:
     if not isinstance(data, list):
         return result
     seen = {str(item.get("id") or "").strip() for item in data if isinstance(item, dict)}
-    dynamic_models: set[str] = set()
+    # Image 2.5 is a supported public API model even before a Codex account is
+    # imported. Account availability is enforced when a generation starts.
+    dynamic_models: set[str] = set(GPT_IMAGE_25_MODELS)
     accounts = account_service.list_accounts()
     web_image_accounts = [
         account

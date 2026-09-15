@@ -514,6 +514,14 @@ class ConfigStore:
         return str(self.data.get("default_upstream_model_name") or "gpt-5-5").strip()
 
     @property
+    def codex_images_main_model(self) -> str:
+        return str(
+            os.getenv("CHATGPT2API_IMAGES_MAIN_MODEL")
+            or self.data.get("codex_images_main_model")
+            or "gpt-5.6-luna"
+        ).strip()
+
+    @property
     def default_thinking_effort(self) -> str:
         value = str(self.data.get("default_thinking_effort") or "auto").strip().lower()
         return value if value in {"auto", "standard", "extended", "max"} else "auto"
@@ -579,6 +587,7 @@ class ConfigStore:
         data["ai_review"] = self.ai_review
         data["global_system_prompt"] = self.global_system_prompt
         data["default_upstream_model_name"] = self.default_upstream_model_name
+        data["codex_images_main_model"] = self.codex_images_main_model
         data["default_thinking_effort"] = self.default_thinking_effort
         data["backup"] = self.get_backup_settings()
         data["image_storage"] = self.get_image_storage_settings()

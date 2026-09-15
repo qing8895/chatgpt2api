@@ -17,6 +17,7 @@ from services.image_storage_service import image_storage_service
 from services.openai_backend_api import ImageContentPolicyError, ImagePollTimeoutError, OpenAIBackendAPI
 from utils.helper import (
     IMAGE_MODELS,
+    codex_image_tool_model,
     extract_image_from_message_content,
     is_codex_image_model,
     is_supported_image_model,
@@ -1271,6 +1272,7 @@ def stream_codex_image_outputs(
         images=request.images or [],
         size=request.size,
         quality=request.quality,
+        model=request.model,
     )))
     if not images:
         raise ImageGenerationError("No image result found in response")
@@ -1318,10 +1320,15 @@ def _generate_single_image(
                 request.progress_callback("getting_account")
             plan_type, _ = split_image_model(request.model)
             codex_model = is_codex_image_model(request.model)
+            codex_plan_types = (
+                ("plus", "team", "pro")
+                if codex_model and not plan_type and codex_image_tool_model(request.model) == "gpt-image-2"
+                else None
+            )
             token = account_service.get_available_access_token(
                 plan_type=plan_type,
                 source_type="codex" if codex_model else None,
-                plan_types=("plus", "team", "pro") if codex_model and not plan_type else None,
+                plan_types=codex_plan_types,
             )
         except RuntimeError as exc:
             raise ImageGenerationError(str(exc) or "image generation failed", account_email=account_email) from exc

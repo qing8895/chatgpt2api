@@ -2,6 +2,8 @@
 
 ## Unreleased
 
++ [新增] OpenAI 生图与图片编辑支持 `gpt-image-2.5-flare`、`gpt-image-2.5-sunburst` 及 `2026-09-08` 日期快照，并支持 `xhigh`、`max` 图片质量。
+
 ## 1.8.0 - 2026-07-28
 
 + [新增] 新增默认请求上游模型名称和默认思考强度配置，支持在设置页面修改，并可通过模型名的 `-standard`、`-extended`、`-max` 后缀覆盖思考强度。
