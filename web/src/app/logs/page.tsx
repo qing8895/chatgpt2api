@@ -60,6 +60,8 @@ function LogsContent() {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [deletingItems, setDeletingItems] = useState<SystemLog[]>([]);
@@ -74,13 +76,17 @@ function LogsContent() {
   const currentPageSelected = currentRows.length > 0 && currentRows.every((item) => selectedSet.has(item.id));
   const allSelected = items.length > 0 && items.every((item) => selectedSet.has(item.id));
 
-  const loadLogs = async () => {
+  const loadLogs = async (append = false) => {
     setIsLoading(true);
     try {
-      const data = await fetchSystemLogs({ type, start_date: startDate, end_date: endDate });
-      setItems(data.items);
-      setSelectedIds((current) => current.filter((id) => data.items.some((item) => item.id === id)));
-      setPage(1);
+      const offset = append ? items.length : 0;
+      const data = await fetchSystemLogs({ type, start_date: startDate, end_date: endDate, offset, limit: 100 });
+      const nextItems = append ? [...items, ...data.items] : data.items;
+      setItems(nextItems);
+      setTotal(data.total);
+      setHasMore(data.has_more);
+      setSelectedIds((current) => current.filter((id) => nextItems.some((item) => item.id === id)));
+      if (!append) setPage(1);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "加载日志失败");
     } finally {
@@ -121,7 +127,7 @@ function LogsContent() {
         setDetailOpen(false);
         setDetailLog(null);
       }
-      await loadLogs();
+      await loadLogs(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "删除日志失败");
     } finally {
@@ -130,7 +136,7 @@ function LogsContent() {
   };
 
   useEffect(() => {
-    void loadLogs();
+    void loadLogs(false);
   }, [type, startDate, endDate]);
 
   return (
@@ -152,7 +158,7 @@ function LogsContent() {
           <Button variant="outline" onClick={clearFilters} className="h-10 rounded-xl border-stone-200 bg-white px-4 text-stone-700">
             清除筛选条件
           </Button>
-          <Button onClick={() => void loadLogs()} disabled={isLoading} className="h-10 rounded-xl bg-stone-950 px-4 text-white hover:bg-stone-800">
+          <Button onClick={() => void loadLogs(false)} disabled={isLoading} className="h-10 rounded-xl bg-stone-950 px-4 text-white hover:bg-stone-800">
             {isLoading ? <LoaderCircle className="size-4 animate-spin" /> : <Search className="size-4" />}
             查询
           </Button>
@@ -163,7 +169,7 @@ function LogsContent() {
         <CardContent className="p-0">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-100 px-5 py-4">
             <div className="flex flex-wrap items-center gap-3 text-sm text-stone-600">
-              <span>共 {items.length} 条</span>
+              <span>已加载 {items.length} / {total} 条</span>
               <label className="flex items-center gap-2">
                 <Checkbox checked={currentPageSelected} onCheckedChange={(checked) => toggleIds(currentRows.map((item) => item.id), Boolean(checked))} />
                 本页全选
@@ -175,7 +181,7 @@ function LogsContent() {
               {selectedIds.length > 0 ? <span>已选 {selectedIds.length} 条</span> : null}
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="ghost" className="h-8 rounded-lg px-3 text-stone-500" onClick={() => void loadLogs()} disabled={isLoading}>
+              <Button variant="ghost" className="h-8 rounded-lg px-3 text-stone-500" onClick={() => void loadLogs(false)} disabled={isLoading}>
                 <RefreshCw className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
                 刷新
               </Button>
@@ -265,13 +271,19 @@ function LogsContent() {
             </Table>
           </div>
           <div className="flex items-center justify-end gap-2 border-t border-stone-100 px-4 py-3 text-sm text-stone-500">
-            <span>第 {safePage} / {pageCount} 页，共 {items.length} 条</span>
+            <span>第 {safePage} / {pageCount} 页，已加载 {items.length} / {total} 条</span>
             <Button variant="outline" size="icon" className="size-9 rounded-lg border-stone-200 bg-white" disabled={safePage <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
               <ChevronLeft className="size-4" />
             </Button>
             <Button variant="outline" size="icon" className="size-9 rounded-lg border-stone-200 bg-white" disabled={safePage >= pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>
               <ChevronRight className="size-4" />
             </Button>
+            {hasMore ? (
+              <Button variant="outline" className="h-9 rounded-lg border-stone-200 bg-white px-3" disabled={isLoading} onClick={() => void loadLogs(true)}>
+                {isLoading ? <LoaderCircle className="size-4 animate-spin" /> : null}
+                加载更多
+              </Button>
+            ) : null}
           </div>
           {!isLoading && items.length === 0 ? <div className="px-6 py-14 text-center text-sm text-stone-500">没有找到日志</div> : null}
         </CardContent>

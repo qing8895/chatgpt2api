@@ -95,9 +95,9 @@ def create_router(app_version: str) -> APIRouter:
             raise HTTPException(status_code=400, detail={"error": str(exc)}) from exc
 
     @router.get("/api/images")
-    async def get_images(request: Request, start_date: str = "", end_date: str = "", authorization: str | None = Header(default=None)):
+    async def get_images(request: Request, start_date: str = "", end_date: str = "", storage_dir: str = "", authorization: str | None = Header(default=None)):
         require_admin(authorization)
-        return list_images(resolve_image_base_url(request), start_date=start_date.strip(), end_date=end_date.strip())
+        return list_images(resolve_image_base_url(request), start_date=start_date.strip(), end_date=end_date.strip(), storage_dir=storage_dir.strip())
 
     @router.get("/images/{image_path:path}", include_in_schema=False)
     async def get_image(image_path: str):
@@ -128,9 +128,9 @@ def create_router(app_version: str) -> APIRouter:
         return get_image_download_response(image_path)
 
     @router.get("/api/logs")
-    async def get_logs(type: str = "", start_date: str = "", end_date: str = "", authorization: str | None = Header(default=None)):
+    async def get_logs(type: str = "", start_date: str = "", end_date: str = "", offset: int = 0, limit: int = 100, authorization: str | None = Header(default=None)):
         require_admin(authorization)
-        return {"items": log_service.list(type=type.strip(), start_date=start_date.strip(), end_date=end_date.strip())}
+        return log_service.list_page(type=type.strip(), start_date=start_date.strip(), end_date=end_date.strip(), offset=offset, limit=limit)
 
     @router.post("/api/logs/delete")
     async def delete_logs(body: LogDeleteRequest, authorization: str | None = Header(default=None)):

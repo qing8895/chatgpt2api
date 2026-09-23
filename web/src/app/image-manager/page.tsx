@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { compressAllImages, deleteImageTag, deleteManagedImages, deleteToTarget, downloadImages, downloadSingleImage, fetchImageStorage, fetchImageTags, fetchManagedImages, setImageTags, type ImageStorageStats, type ManagedImage } from "@/lib/api";
 import { useAuthGuard } from "@/lib/use-auth-guard";
 
@@ -61,6 +62,8 @@ function ImageManagerContent() {
   const [items, setItems] = useState<ManagedImage[]>([]);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [storageDir, setStorageDir] = useState("all");
+  const [storageDirs, setStorageDirs] = useState<string[]>([]);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [page, setPage] = useState(1);
@@ -116,10 +119,11 @@ function ImageManagerContent() {
     setIsLoading(true);
     try {
       const [data, tagsData] = await Promise.all([
-        fetchManagedImages({ start_date: startDate, end_date: endDate }),
+        fetchManagedImages({ start_date: startDate, end_date: endDate, storage_dir: storageDir === "all" ? "" : storageDir }),
         fetchImageTags(),
       ]);
       setItems(data.items);
+      setStorageDirs(data.storage_dirs || []);
       setAllTags(tagsData.tags);
       setSelectedPaths((current) => current.filter((path) => data.items.some((item) => imageKey(item) === path)));
       setPage(1);
@@ -227,6 +231,7 @@ function ImageManagerContent() {
   const clearFilters = () => {
     setStartDate("");
     setEndDate("");
+    setStorageDir("all");
     setSelectedTags([]);
   };
 
@@ -264,13 +269,27 @@ function ImageManagerContent() {
     }
   };
 
+  const handleDirectoryDownload = async () => {
+    const paths = filteredItems.map((item) => item.rel);
+    if (paths.length === 0) return;
+    setIsDownloading(true);
+    try {
+      await downloadImages(paths);
+      toast.success(`已打包下载 ${paths.length} 张图片`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "下载失败");
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
   const handleSingleDownload = async (item: ManagedImage) => {
     await downloadSingleImage(item.rel);
   };
 
   useEffect(() => {
     void loadImages();
-  }, [startDate, endDate]);
+  }, [startDate, endDate, storageDir]);
 
   return (
     <section className="space-y-5">
@@ -280,6 +299,13 @@ function ImageManagerContent() {
           <h1 className="text-2xl font-semibold tracking-tight">图片管理</h1>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Select value={storageDir} onValueChange={setStorageDir}>
+            <SelectTrigger className="h-10 w-[180px] rounded-xl border-stone-200 bg-white"><SelectValue placeholder="全部目录" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部目录</SelectItem>
+              {storageDirs.map((dir) => <SelectItem key={dir} value={dir}>{dir}</SelectItem>)}
+            </SelectContent>
+          </Select>
           <DateRangeFilter startDate={startDate} endDate={endDate} onChange={(start, end) => { setStartDate(start); setEndDate(end); }} />
           <Button variant="outline" onClick={clearFilters} className="h-10 rounded-xl border-stone-200 bg-white px-4 text-stone-700">
             清除筛选条件
@@ -288,6 +314,12 @@ function ImageManagerContent() {
             {isLoading ? <LoaderCircle className="size-4 animate-spin" /> : <Search className="size-4" />}
             查询
           </Button>
+          {storageDir !== "all" ? (
+            <Button variant="outline" onClick={() => void handleDirectoryDownload()} disabled={isDownloading || filteredItems.length === 0} className="h-10 rounded-xl border-stone-200 bg-white px-4 text-stone-700">
+              {isDownloading ? <LoaderCircle className="size-4 animate-spin" /> : <Download className="size-4" />}
+              下载当前目录
+            </Button>
+          ) : null}
           <Button variant="outline" onClick={() => setDeleteMode("filtered")} disabled={isDeleting || items.length === 0 || (!startDate && !endDate)} className="h-10 rounded-xl border-rose-200 bg-white px-4 text-rose-600 hover:bg-rose-50">
             <Trash2 className="size-4" />
             删除匹配日期

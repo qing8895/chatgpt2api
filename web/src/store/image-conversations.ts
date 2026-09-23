@@ -41,6 +41,7 @@ export type ImageTurn = {
   ratio: string;
   tier: string;
   quality: string;
+  storageDir: string;
   images: StoredImage[];
   createdAt: string;
   status: ImageTurnStatus;
@@ -153,6 +154,7 @@ function normalizeTurn(turn: ImageTurn & Record<string, unknown>): ImageTurn {
     ratio: typeof turn.ratio === "string" && turn.ratio ? turn.ratio : "1:1",
     tier: typeof turn.tier === "string" && turn.tier ? turn.tier : "1k",
     quality: typeof turn.quality === "string" && turn.quality ? turn.quality : "auto",
+    storageDir: typeof turn.storageDir === "string" ? turn.storageDir : "",
     images: normalizedImages,
     createdAt: String(turn.createdAt || new Date().toISOString()),
     status:
@@ -183,6 +185,7 @@ function normalizeConversation(conversation: ImageConversation & Record<string, 
           ratio: typeof conversation.ratio === "string" && conversation.ratio ? conversation.ratio : "1:1",
           tier: typeof conversation.tier === "string" && conversation.tier ? conversation.tier : "1k",
           quality: typeof conversation.quality === "string" && conversation.quality ? conversation.quality : "auto",
+          storageDir: typeof conversation.storageDir === "string" ? conversation.storageDir : "",
           images: Array.isArray(conversation.images) ? (conversation.images as StoredImage[]) : [],
           createdAt: String(conversation.createdAt || new Date().toISOString()),
           status:

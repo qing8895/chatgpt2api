@@ -463,6 +463,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
   const imageTimeoutRetrySecs = Number(config?.image_timeout_retry_secs || 30);
 
   const [imagePrompt, setImagePrompt] = useState("");
+  const [imageStorageDir, setImageStorageDir] = useState("");
   const [imageCount, setImageCount] = useState("3");
   const [imageRatio, setImageRatio] = useState("auto");
   const [imageTier, setImageTier] = useState("1k");
@@ -1240,8 +1241,8 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
           pendingImages.map((image) => {
             const taskId = image.taskId || image.id;
             return activeTurn.mode === "edit"
-              ? createImageEditTask(taskId, referenceFiles, activeTurn.prompt, activeTurn.model, activeTurn.size, activeTurn.quality)
-              : createImageGenerationTask(taskId, activeTurn.prompt, activeTurn.model, activeTurn.size, activeTurn.quality);
+              ? createImageEditTask(taskId, referenceFiles, activeTurn.prompt, activeTurn.model, activeTurn.size, activeTurn.quality, activeTurn.storageDir)
+              : createImageGenerationTask(taskId, activeTurn.prompt, activeTurn.model, activeTurn.size, activeTurn.quality, activeTurn.storageDir);
           }),
         );
         await applyTasks(submitted);
@@ -1292,8 +1293,8 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
               const resubmitted = await Promise.all(
                 missingImages.map((image) =>
                   activeTurn.mode === "edit"
-                    ? createImageEditTask(image.taskId || image.id, referenceFiles, activeTurn.prompt, activeTurn.model, activeTurn.size, activeTurn.quality)
-                    : createImageGenerationTask(image.taskId || image.id, activeTurn.prompt, activeTurn.model, activeTurn.size, activeTurn.quality),
+                    ? createImageEditTask(image.taskId || image.id, referenceFiles, activeTurn.prompt, activeTurn.model, activeTurn.size, activeTurn.quality, activeTurn.storageDir)
+                    : createImageGenerationTask(image.taskId || image.id, activeTurn.prompt, activeTurn.model, activeTurn.size, activeTurn.quality, activeTurn.storageDir),
                 ),
               );
               if (resubmitted.length > 0) {
@@ -1373,6 +1374,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
         ratio: sourceTurn.ratio,
         tier: sourceTurn.tier,
         quality: sourceTurn.quality,
+        storageDir: sourceTurn.storageDir,
         images: createLoadingImages(nextTurnId, count),
         createdAt: now,
         status: "queued",
@@ -1571,6 +1573,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
       ratio: imageRatio,
       tier: imageTier,
       quality: imageQuality,
+      storageDir: imageStorageDir.trim(),
       images: createLoadingImages(turnId, parsedCount),
       createdAt: now,
       status: "queued",
@@ -1721,6 +1724,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
 
           <ImageComposer
             prompt={imagePrompt}
+            storageDir={imageStorageDir}
             imageCount={imageCount}
             imageRatio={imageRatio}
             imageTier={imageTier}
@@ -1735,6 +1739,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
             textareaRef={textareaRef}
             fileInputRef={fileInputRef}
             onPromptChange={setImagePrompt}
+            onStorageDirChange={setImageStorageDir}
             onImageCountChange={(value) => setImageCount(value ? clampImageCount(value) : "")}
             onImageRatioChange={setImageRatio}
             onImageTierChange={setImageTier}

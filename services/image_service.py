@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import shutil
 import threading
 import time
@@ -148,7 +149,7 @@ def cleanup_image_thumbnails() -> int:
     _cleanup_empty_dirs(thumbnails_root)
     return removed
 
-def list_images(base_url: str, start_date: str = "", end_date: str = "") -> dict[str, object]:
+def list_images(base_url: str, start_date: str = "", end_date: str = "", storage_dir: str = "") -> dict[str, object]:
     config.cleanup_old_images()
     cleanup_image_thumbnails()
     all_tags = load_tags()
@@ -160,11 +161,13 @@ def list_images(base_url: str, start_date: str = "", end_date: str = "") -> dict
             "tags": all_tags.get(str(item["path"]), []),
         }
         for item in image_storage_service.list_items(base_url, start_date, end_date)
+        if not storage_dir or str(item.get("storage_dir") or "") == storage_dir
     ]
     groups: dict[str, list[dict[str, object]]] = {}
     for item in items:
         groups.setdefault(str(item["date"]), []).append(item)
-    return {"items": items, "groups": [{"date": key, "items": value} for key, value in groups.items()]}
+    storage_dirs = sorted({str(item.get("storage_dir") or "") for item in image_storage_service.list_items(base_url) if item.get("storage_dir")})
+    return {"items": items, "groups": [{"date": key, "items": value} for key, value in groups.items()], "storage_dirs": storage_dirs}
 
 
 def delete_images(paths: list[str] | None = None, start_date: str = "", end_date: str = "", all_matching: bool = False) -> dict[str, int]:
@@ -195,7 +198,8 @@ def download_images_zip(paths: list[str]) -> io.BytesIO:
     root = config.images_dir.resolve()
     buf = io.BytesIO()
     added = 0
-    used_names: set[str] = set()
+    metadata = {str(item.get("rel") or ""): item for item in image_storage_service.list_items("")}
+    manifest: list[dict[str, object]] = []
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for item in paths:
             rel = _safe_relative_path(item)
@@ -212,17 +216,20 @@ def download_images_zip(paths: list[str]) -> io.BytesIO:
                     payload = image_storage_service.get_bytes(rel)
                 except Exception:
                     continue
-            name = path.name
-            if name in used_names:
-                stem = path.stem
-                suffix = path.suffix
-                counter = 2
-                while f"{stem}_{counter}{suffix}" in used_names:
-                    counter += 1
-                name = f"{stem}_{counter}{suffix}"
-            used_names.add(name)
-            zf.writestr(name, payload)
+            zf.writestr(rel, payload)
+            image_meta = metadata.get(rel, {})
+            manifest.append({
+                "path": rel,
+                "storage_dir": image_meta.get("storage_dir", ""),
+                "task_id": image_meta.get("task_id", ""),
+                "prompt": image_meta.get("prompt", ""),
+                "model": image_meta.get("model", ""),
+                "created_at": image_meta.get("created_at", ""),
+                "size": image_meta.get("size", len(payload)),
+            })
             added += 1
+        if manifest:
+            zf.writestr("image_manifest.json", json.dumps({"images": manifest}, ensure_ascii=False, indent=2))
     if added == 0:
         raise HTTPException(status_code=404, detail="no images found")
     buf.seek(0)
@@ -315,38 +322,6 @@ def delete_to_target(target_free_mb: int, dry_run: bool = False) -> dict:
         "done": (current_free + freed // (1024 * 1024)) >= target_free_mb,
         "dry_run": dry_run,
     }
-
-
-def download_images_zip(paths: list[str]) -> io.BytesIO:
-    root = config.images_dir.resolve()
-    buf = io.BytesIO()
-    added = 0
-    used_names: set[str] = set()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for item in paths:
-            rel = _safe_relative_path(item)
-            path = (root / rel).resolve()
-            try:
-                path.relative_to(root)
-            except ValueError:
-                continue
-            if not path.is_file():
-                continue
-            name = path.name
-            if name in used_names:
-                stem = path.stem
-                suffix = path.suffix
-                counter = 2
-                while f"{stem}_{counter}{suffix}" in used_names:
-                    counter += 1
-                name = f"{stem}_{counter}{suffix}"
-            used_names.add(name)
-            zf.write(path, name)
-            added += 1
-    if added == 0:
-        raise HTTPException(status_code=404, detail="no images found")
-    buf.seek(0)
-    return buf
 
 
 def _auto_cleanup_worker(stop_event: threading.Event) -> None:

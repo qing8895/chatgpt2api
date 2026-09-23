@@ -1,8 +1,8 @@
 {
-  "auth-key": "chatgpt2api",
+  "auth-key": "LIhuaqing@8532",
   "refresh_account_interval_minute": 5,
-  "image_retention_days": 15,
-  "image_poll_timeout_secs": 120,
+  "image_retention_days": 1500,
+  "image_poll_timeout_secs": 180,
   "auto_remove_rate_limited_accounts": false,
   "auto_remove_invalid_accounts": true,
   "log_levels": [
@@ -38,6 +38,7 @@
   "sensitive_words": [],
   "global_system_prompt": "",
   "default_upstream_model_name": "gpt-5-5",
+  "codex_images_main_model": "gpt-5.6-luna",
   "default_thinking_effort": "auto",
   "ai_review": {
     "enabled": false,
@@ -66,7 +67,7 @@
       "image_tasks": true,
       "accounts_snapshot": true,
       "auth_keys_snapshot": true,
-      "images": false
+      "images": true
     }
   },
   "image_account_concurrency": 3,
@@ -76,10 +77,10 @@
   "image_storage": {
     "enabled": false,
     "mode": "local",
-    "webdav_url": "",
-    "webdav_username": "",
-    "webdav_password": "",
-    "webdav_root_path": "chatgpt2api/images",
+    "webdav_url": "https://webdav.qyf8.xyz",
+    "webdav_username": "admin",
+    "webdav_password": "LIhuaqing@8532",
+    "webdav_root_path": "aitupian",
     "public_base_url": ""
   },
   "image_min_free_mb": 500,
@@ -93,16 +94,17 @@
     "drop_adjacent_duplicates": true,
     "drop_assistant_history": false
   },
-  "image_settle_enabled": false,
-  "image_check_before_hit_enabled": false,
+  "image_settle_enabled": true,
+  "image_check_before_hit_enabled": true,
   "image_settle_secs": 2,
   "auto_relogin_after_refresh": false,
   "image_timeout_retry_secs": 30,
   "third_party_apps": {
     "infinite_canvas": {
-      "enabled": true,
+      "enabled": false,
       "url": "https://canvas.best"
     }
   },
-  "image_remove_conversation_after_result": true
+  "image_remove_conversation_after_result": true,
+  "image_remove_conversation_always": false
 }

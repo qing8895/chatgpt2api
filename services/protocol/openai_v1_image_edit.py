@@ -60,6 +60,8 @@ def handle(body: dict[str, Any]) -> dict[str, Any] | Iterator[dict[str, Any]]:
     response_format = str(body.get("response_format") or "b64_json")
     base_url = str(body.get("base_url") or "") or None
     progress_callback = body.get("progress_callback")
+    storage_dir = str(body.get("storage_dir") or "")
+    task_id = str(body.get("storage_task_id") or "")
     encoded_images = encode_images(images)
     if not encoded_images:
         raise ImageGenerationError("image is required")
@@ -71,6 +73,8 @@ def handle(body: dict[str, Any]) -> dict[str, Any] | Iterator[dict[str, Any]]:
         quality=quality,
         response_format=response_format,
         base_url=base_url,
+        storage_dir=storage_dir,
+        task_id=task_id,
         images=encoded_images,
         message_as_error=True,
         progress_callback=progress_callback,

@@ -7,7 +7,7 @@ from unittest import mock
 
 from PIL import Image
 
-from services.image_storage_service import ImageStorageService
+from services.image_storage_service import ImageStorageService, normalize_storage_dir
 
 
 def png_bytes() -> bytes:
@@ -75,6 +75,26 @@ class ImageStorageServiceTests(unittest.TestCase):
         self.assertEqual(stored.storage, "local")
         self.assertTrue((self.images_dir / stored.rel).is_file())
         self.assertEqual(stored.url, f"http://app.test/images/{stored.rel}")
+
+    def test_named_storage_directory_records_generation_metadata(self):
+        stored = self.service().save(
+            png_bytes(),
+            "http://app.test",
+            storage_dir="产品/A:*",
+            task_id="task-123",
+            prompt="red square",
+            model="gpt-image-2",
+        )
+
+        self.assertTrue(stored.rel.startswith("产品_A/"))
+        item = self.service().list_items("http://app.test")[0]
+        self.assertEqual(item["storage_dir"], "产品_A")
+        self.assertEqual(item["task_id"], "task-123")
+        self.assertEqual(item["prompt"], "red square")
+        self.assertEqual(item["model"], "gpt-image-2")
+
+    def test_storage_directory_rejects_traversal_characters(self):
+        self.assertEqual(normalize_storage_dir("../project\\draft"), "project_draft")
 
     def test_webdav_mode_uploads_without_local_file(self):
         self.settings.update({

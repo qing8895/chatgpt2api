@@ -128,6 +128,7 @@ class ImageTaskService:
         model: str,
         size: str | None,
         quality: str = "auto",
+        storage_dir: str = "",
         base_url: str = "",
     ) -> dict[str, Any]:
         payload = {
@@ -138,6 +139,8 @@ class ImageTaskService:
             "quality": quality,
             "response_format": "url",
             "base_url": base_url,
+            "storage_dir": storage_dir,
+            "storage_task_id": client_task_id,
         }
         return self._submit(identity, client_task_id=client_task_id, mode="generate", payload=payload)
 
@@ -150,6 +153,7 @@ class ImageTaskService:
         model: str,
         size: str | None,
         quality: str = "auto",
+        storage_dir: str = "",
         base_url: str = "",
         images: list[tuple[bytes, str, str]] | None = None,
         masks: list[tuple[bytes, str, str]] | None = None,
@@ -164,6 +168,8 @@ class ImageTaskService:
             "quality": quality,
             "response_format": "url",
             "base_url": base_url,
+            "storage_dir": storage_dir,
+            "storage_task_id": client_task_id,
         }
         return self._submit(identity, client_task_id=client_task_id, mode="edit", payload=payload)
 
@@ -221,6 +227,8 @@ class ImageTaskService:
                 "model": _clean(payload.get("model"), "gpt-image-2"),
                 "size": _clean(payload.get("size")),
                 "quality": _clean(payload.get("quality"), "auto"),
+                "storage_dir": _clean(payload.get("storage_dir")),
+                "prompt": _clean(payload.get("prompt")),
                 "created_at": now,
                 "updated_at": now,
                 "created_ts": time.time(),
@@ -283,6 +291,8 @@ class ImageTaskService:
                 started,
                 "调用完成",
                 request_preview=request_text(payload.get("prompt")),
+                task_id=_clean(payload.get("storage_task_id")),
+                storage_dir=_clean(payload.get("storage_dir")),
                 urls=_collect_image_urls(data),
                 account_email=account_email,
             )
@@ -304,6 +314,8 @@ class ImageTaskService:
                 status="failed",
                 error=error_message,
                 account_email=account_email,
+                task_id=_clean(payload.get("storage_task_id")),
+                storage_dir=_clean(payload.get("storage_dir")),
             )
 
     def _log_call(
@@ -319,6 +331,8 @@ class ImageTaskService:
         error: str = "",
         urls: list[str] | None = None,
         account_email: str = "",
+        task_id: str = "",
+        storage_dir: str = "",
     ) -> None:
         endpoint = "/v1/images/edits" if mode == "edit" else "/v1/images/generations"
         summary_prefix = "图生图" if mode == "edit" else "文生图"
@@ -341,6 +355,10 @@ class ImageTaskService:
             detail["account_email"] = account_email
         if urls:
             detail["urls"] = list(dict.fromkeys(urls))
+        if task_id:
+            detail["task_id"] = task_id
+        if storage_dir:
+            detail["storage_dir"] = storage_dir
         try:
             log_service.add(LOG_TYPE_CALL, f"{summary_prefix}{suffix}", detail)
         except Exception:
@@ -385,6 +403,8 @@ class ImageTaskService:
                 "model": _clean(item.get("model"), "gpt-image-2"),
                 "size": _clean(item.get("size")),
                 "quality": _clean(item.get("quality"), "auto"),
+                "storage_dir": _clean(item.get("storage_dir")),
+                "prompt": _clean(item.get("prompt")),
                 "created_at": _clean(item.get("created_at"), _now_iso()),
                 "updated_at": _clean(item.get("updated_at"), _clean(item.get("created_at"), _now_iso())),
                 "created_ts": item.get("created_ts"),
@@ -512,12 +532,18 @@ class ImageTaskService:
                 task = self._tasks.get(key)
                 quality = _clean(task.get("quality"), "auto") if task else "auto"
                 size = _clean(task.get("size")) if task else None
+                storage_dir = _clean(task.get("storage_dir")) if task else ""
+                prompt = _clean(task.get("prompt")) if task else ""
+                task_id = _clean(task.get("id")) if task else ""
             data = format_image_result(
                 image_items,
-                "",  # prompt 已不重要，结果已经拿到了
+                prompt,
                 "b64_json",
                 "",
                 int(time.time()),
+                storage_dir=storage_dir,
+                task_id=task_id,
+                model=model,
             )["data"]
             self._update_task(key, status=TASK_STATUS_SUCCESS, data=data, error="", duration_ms=int((time.time() - started) * 1000))
             self._log_call(
@@ -528,6 +554,8 @@ class ImageTaskService:
                 "调用完成（续轮询）",
                 status="success",
                 urls=_collect_image_urls(data),
+                task_id=task_id,
+                storage_dir=storage_dir,
             )
         except Exception as exc:
             error_message = str(exc) or "resume poll failed"

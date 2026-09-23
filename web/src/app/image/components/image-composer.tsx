@@ -1,5 +1,5 @@
 "use client";
-import { ArrowUp, ChevronDown, ImagePlus, Info, LoaderCircle, RectangleHorizontal, RectangleVertical, Square, X } from "lucide-react";
+import { ArrowUp, ChevronDown, Folder, ImagePlus, Info, LoaderCircle, RectangleHorizontal, RectangleVertical, Square, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type RefObject } from "react";
 
 import { ImageLightbox } from "@/components/image-lightbox";
@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 
 type ImageComposerProps = {
   prompt: string;
+  storageDir: string;
   imageCount: string;
   imageRatio: string;
   imageTier: string;
@@ -26,6 +27,7 @@ type ImageComposerProps = {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   fileInputRef: RefObject<HTMLInputElement | null>;
   onPromptChange: (value: string) => void;
+  onStorageDirChange: (value: string) => void;
   onImageCountChange: (value: string) => void;
   onImageRatioChange: (value: string) => void;
   onImageTierChange: (value: string) => void;
@@ -84,6 +86,7 @@ const countOptions = Array.from({ length: 10 }, (_, index) => String(index + 1))
 
 export function ImageComposer({
   prompt,
+  storageDir,
   imageCount,
   imageRatio,
   imageTier,
@@ -98,6 +101,7 @@ export function ImageComposer({
   textareaRef,
   fileInputRef,
   onPromptChange,
+  onStorageDirChange,
   onImageCountChange,
   onImageRatioChange,
   onImageTierChange,
@@ -310,6 +314,17 @@ export function ImageComposer({
             <div className="rounded-b-[24px] border-t border-stone-100 bg-white px-3 pb-3 pt-2 dark:border-white/10 dark:bg-stone-950/95 sm:absolute sm:inset-x-0 sm:bottom-0 sm:rounded-b-none sm:border-t-0 sm:bg-gradient-to-t sm:from-white sm:via-white/95 sm:to-transparent sm:px-6 sm:pb-4 sm:pt-6 sm:dark:from-stone-950 sm:dark:via-stone-950/95 sm:dark:to-stone-950/0" onClick={(event) => event.stopPropagation()}>
               <div className="flex items-end justify-between gap-2 sm:gap-3">
                 <div className="hide-scrollbar flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto pb-0.5 sm:flex-wrap sm:gap-3 sm:overflow-visible sm:pb-0">
+                  <label className="flex h-9 shrink-0 items-center gap-2 rounded-full bg-stone-100 px-3 text-xs text-stone-600 sm:h-10">
+                    <Folder className="size-3.5" />
+                    <Input
+                      value={storageDir}
+                      onChange={(event) => onStorageDirChange(event.target.value)}
+                      maxLength={80}
+                      placeholder="存储目录（可选）"
+                      className="h-7 w-32 border-0 bg-transparent px-0 text-xs shadow-none focus-visible:ring-0 sm:w-40"
+                      aria-label="图片存储目录"
+                    />
+                  </label>
                   <Button
                     type="button"
                     variant="outline"

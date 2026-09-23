@@ -216,6 +216,7 @@ curl http://localhost:8000/v1/images/generations \
   -d '{
     "model": "gpt-image-2",
     "prompt": "一只漂浮在太空里的猫",
+    "storage_dir": "太空猫项目",
     "n": 1,
     "response_format": "b64_json"
   }'
@@ -231,6 +232,7 @@ curl http://localhost:8000/v1/images/generations \
 | `prompt`          | 图片生成提示词                                            |
 | `n`               | 生成数量，当前后端限制为 `1-4`                                 |
 | `response_format` | 当前请求模型中包含该字段，默认值为 `b64_json`                       |
+| `storage_dir`     | 可选的服务端存储目录；生成文件按“目录/日期/任务”归档                    |
 
 <br>
 </details>
@@ -247,6 +249,7 @@ curl http://localhost:8000/v1/images/edits \
   -H "Authorization: Bearer <auth-key>" \
   -F "model=gpt-image-2" \
   -F "prompt=把这张图改成赛博朋克夜景风格" \
+  -F "storage_dir=赛博朋克项目" \
   -F "n=1" \
   -F "image=@./input.png"
 ```
@@ -278,6 +281,7 @@ curl http://localhost:8000/v1/images/edits \
 | `image`     | 需要编辑的图片文件，使用 multipart/form-data 上传           |
 | `images`    | JSON 图片引用数组，支持 `{"image_url": "https://..."}` |
 | `image_url` | 表单模式下也可直接传图片链接，支持重复字段传多张图                     |
+| `storage_dir` | 可选的服务端存储目录；生成文件按“目录/日期/任务”归档                  |
 
 <br>
 </details>

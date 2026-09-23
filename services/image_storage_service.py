@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import re
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -19,6 +20,7 @@ from services.config import DATA_DIR, config
 IMAGE_INDEX_FILE = DATA_DIR / "image_index.json"
 IMAGE_INDEX_LOCK = Lock()
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+STORAGE_DIR_INVALID_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 
 class ImageStorageError(RuntimeError):
@@ -39,6 +41,23 @@ def _clean(value: object) -> str:
 
 def _now_iso() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def normalize_storage_dir(value: object) -> str:
+    """Return a safe, single-level collection directory name."""
+    name = STORAGE_DIR_INVALID_RE.sub("_", _clean(value)).strip(" ._")
+    if name in {"", ".", ".."}:
+        return ""
+    return name[:80].rstrip(" ._")
+
+
+def _date_from_rel(rel: str, fallback: str = "") -> str:
+    parts = rel.replace("\\", "/").split("/")
+    for index in range(max(0, len(parts) - 3)):
+        year, month, day = parts[index:index + 3]
+        if len(year) == 4 and year.isdigit() and len(month) == 2 and month.isdigit() and len(day) == 2 and day.isdigit():
+            return f"{year}-{month}-{day}"
+    return fallback
 
 
 def _safe_relative_path(path: str) -> str:
@@ -196,15 +215,30 @@ class ImageStorageService:
             return f"{public_base_url.rstrip('/')}/{_safe_relative_path(rel)}"
         return f"{(base_url or config.base_url).rstrip('/')}/images/{_safe_relative_path(rel)}"
 
-    def make_relative_path(self, image_data: bytes) -> str:
+    def make_relative_path(self, image_data: bytes, storage_dir: str = "", task_id: str = "") -> str:
         file_hash = hashlib.md5(image_data).hexdigest()
-        filename = f"{int(time.time())}_{file_hash}.png"
+        safe_task_id = re.sub(r"[^A-Za-z0-9_-]", "", _clean(task_id))[:64]
+        prefix = f"{safe_task_id}_" if safe_task_id else ""
+        filename = f"{prefix}{time.time_ns()}_{file_hash}.png"
         relative_dir = Path(time.strftime("%Y"), time.strftime("%m"), time.strftime("%d"))
+        collection = normalize_storage_dir(storage_dir)
+        if collection:
+            relative_dir = Path(collection) / relative_dir
         return f"{relative_dir.as_posix()}/{filename}"
 
-    def save(self, image_data: bytes, base_url: str | None = None) -> StoredImage:
+    def save(
+        self,
+        image_data: bytes,
+        base_url: str | None = None,
+        *,
+        storage_dir: str = "",
+        task_id: str = "",
+        prompt: str = "",
+        model: str = "",
+    ) -> StoredImage:
         config.cleanup_old_images()
-        rel = self.make_relative_path(image_data)
+        collection = normalize_storage_dir(storage_dir)
+        rel = self.make_relative_path(image_data, collection, task_id)
         mode = self.mode()
         if mode not in {"local", "webdav", "both"}:
             mode = "local"
@@ -227,7 +261,11 @@ class ImageStorageService:
             "rel": rel,
             "path": rel,
             "name": Path(rel).name,
-            "date": "-".join(rel.split("/")[:3]),
+            "date": _date_from_rel(rel, _now_iso()[:10]),
+            "storage_dir": collection,
+            "task_id": _clean(task_id),
+            "prompt": _clean(prompt),
+            "model": _clean(model),
             "size": len(image_data),
             "created_at": _now_iso(),
             "storage": "both" if stored_local and stored_webdav else ("webdav" if stored_webdav else "local"),
@@ -288,7 +326,8 @@ class ImageStorageService:
                     "rel": rel,
                     "path": rel,
                     "name": path.name,
-                    "date": "-".join(rel.split("/")[:3]) if len(rel.split("/")) >= 4 else datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d"),
+                    "date": _date_from_rel(rel, datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d")),
+                    "storage_dir": rel.split("/", 1)[0] if not rel[:4].isdigit() and "/" in rel else "",
                     "size": path.stat().st_size,
                     "created_at": datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
                     "storage": "local",
@@ -383,7 +422,8 @@ class ImageStorageService:
                         "rel": rel,
                         "path": rel,
                         "name": path.name,
-                        "date": "-".join(rel.split("/")[:3]) if len(rel.split("/")) >= 4 else datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d"),
+                        "date": _date_from_rel(rel, datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d")),
+                        "storage_dir": str(item.get("storage_dir") or (rel.split("/", 1)[0] if not rel[:4].isdigit() and "/" in rel else "")),
                         "size": len(payload),
                         "created_at": str(item.get("created_at") or datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")),
                         "storage": "both",

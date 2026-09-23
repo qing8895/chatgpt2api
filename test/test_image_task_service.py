@@ -68,6 +68,29 @@ class ImageTaskServiceTests(unittest.TestCase):
             self.assertEqual(task["data"][0]["url"], "http://example.test/image.png")
             self.assertEqual(calls, 1)
 
+    def test_generation_passes_storage_context_to_handler(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            captured = {}
+
+            def handler(payload):
+                captured.update(payload)
+                return {"data": [{"url": "http://example.test/image.png"}]}
+
+            service = self.make_service(Path(tmp_dir) / "image_tasks.json", handler)
+            service.submit_generation(
+                OWNER,
+                client_task_id="folder-task",
+                prompt="cat",
+                model="gpt-image-2",
+                size=None,
+                storage_dir="project-a",
+                base_url="http://local.test",
+            )
+            wait_for_task(service, OWNER, "folder-task", "success")
+
+            self.assertEqual(captured["storage_dir"], "project-a")
+            self.assertEqual(captured["storage_task_id"], "folder-task")
+
     def test_different_owner_cannot_query_task(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             service = self.make_service(Path(tmp_dir) / "image_tasks.json")

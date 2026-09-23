@@ -265,6 +265,10 @@ export type ManagedImage = {
   width?: number;
   height?: number;
   tags?: string[];
+  storage_dir?: string;
+  task_id?: string;
+  prompt?: string;
+  model?: string;
 };
 
 export type SystemLog = {
@@ -458,7 +462,7 @@ export async function editImage(files: File | File[], prompt: string, model?: Im
   );
 }
 
-export async function createImageGenerationTask(clientTaskId: string, prompt: string, model?: ImageModel, size?: string, quality = "auto") {
+export async function createImageGenerationTask(clientTaskId: string, prompt: string, model?: ImageModel, size?: string, quality = "auto", storageDir = "") {
   return httpRequest<ImageTask>("/api/image-tasks/generations", {
     method: "POST",
     body: {
@@ -467,6 +471,7 @@ export async function createImageGenerationTask(clientTaskId: string, prompt: st
       ...(model ? { model } : {}),
       ...(size ? { size } : {}),
       quality,
+      storage_dir: storageDir,
     },
   });
 }
@@ -478,6 +483,7 @@ export async function createImageEditTask(
   model?: ImageModel,
   size?: string,
   quality = "auto",
+  storageDir = "",
 ) {
   const formData = new FormData();
   const uploadFiles = Array.isArray(files) ? files : [files];
@@ -494,6 +500,7 @@ export async function createImageEditTask(
     formData.append("size", size);
   }
   formData.append("quality", quality);
+  formData.append("storage_dir", storageDir);
 
   return httpRequest<ImageTask>("/api/image-tasks/edits", {
     method: "POST",
@@ -583,11 +590,12 @@ export function getBackupDownloadUrl(key: string) {
   return `/api/backups/download?${params.toString()}`;
 }
 
-export async function fetchManagedImages(filters: { start_date?: string; end_date?: string }) {
+export async function fetchManagedImages(filters: { start_date?: string; end_date?: string; storage_dir?: string }) {
   const params = new URLSearchParams();
   if (filters.start_date) params.set("start_date", filters.start_date);
   if (filters.end_date) params.set("end_date", filters.end_date);
-  return httpRequest<{ items: ManagedImage[]; groups: Array<{ date: string; items: ManagedImage[] }> }>(
+  if (filters.storage_dir) params.set("storage_dir", filters.storage_dir);
+  return httpRequest<{ items: ManagedImage[]; groups: Array<{ date: string; items: ManagedImage[] }>; storage_dirs: string[] }>(
     `/api/images${params.toString() ? `?${params.toString()}` : ""}`,
   );
 }
@@ -659,12 +667,14 @@ export async function deleteToTarget(targetFreeMb: number) {
   );
 }
 
-export async function fetchSystemLogs(filters: { type?: string; start_date?: string; end_date?: string }) {
+export async function fetchSystemLogs(filters: { type?: string; start_date?: string; end_date?: string; offset?: number; limit?: number }) {
   const params = new URLSearchParams();
   if (filters.type) params.set("type", filters.type);
   if (filters.start_date) params.set("start_date", filters.start_date);
   if (filters.end_date) params.set("end_date", filters.end_date);
-  return httpRequest<{ items: SystemLog[] }>(`/api/logs${params.toString() ? `?${params.toString()}` : ""}`);
+  if (filters.offset != null) params.set("offset", String(filters.offset));
+  if (filters.limit != null) params.set("limit", String(filters.limit));
+  return httpRequest<{ items: SystemLog[]; total: number; offset: number; limit: number; has_more: boolean }>(`/api/logs${params.toString() ? `?${params.toString()}` : ""}`);
 }
 
 export async function deleteSystemLogs(ids: string[]) {
