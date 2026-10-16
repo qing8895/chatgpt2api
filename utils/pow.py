@@ -1,4 +1,3 @@
-import hashlib
 import json
 import random
 import re
@@ -165,18 +164,34 @@ def build_pow_config(
     ]
 
 
+def fnv1a_32(text: str) -> str:
+    # JavaScript hashes UTF-16 code units, not UTF-8 bytes.
+    h = 2166136261
+    raw = text.encode("utf-16-le", errors="surrogatepass")
+    for i in range(0, len(raw), 2):
+        h = ((h ^ (raw[i] | raw[i + 1] << 8)) * 16777619) & 0xffffffff
+    h ^= h >> 16
+    h = (h * 2246822507) & 0xffffffff
+    h ^= h >> 13
+    h = (h * 3266489909) & 0xffffffff
+    h ^= h >> 16
+    return f"{h:08x}"
+
+
 def _pow_generate(seed: str, difficulty: str, config: list[Any], limit: int = 500000) -> tuple[str, bool]:
-    target = bytes.fromhex(difficulty)
-    diff_len = len(difficulty) // 2
-    seed_bytes = seed.encode()
+    if not re.fullmatch(r"[0-9a-fA-F]{1,8}", difficulty):
+        raise ValueError("invalid proof difficulty")
+    difficulty = difficulty.lower()
     static_1 = (json.dumps(config[:3], separators=(",", ":"), ensure_ascii=False)[:-1] + ",").encode()
     static_2 = ("," + json.dumps(config[4:9], separators=(",", ":"), ensure_ascii=False)[1:-1] + ",").encode()
     static_3 = ("," + json.dumps(config[10:], separators=(",", ":"), ensure_ascii=False)[1:]).encode()
+    started = time.monotonic()
     for i in range(limit):
-        final_json = static_1 + str(i).encode() + static_2 + str(i >> 1).encode() + static_3
+        elapsed_ms = round((time.monotonic() - started) * 1000)
+        final_json = static_1 + str(i).encode() + static_2 + str(elapsed_ms).encode() + static_3
         encoded = pybase64.b64encode(final_json)
-        digest = hashlib.sha3_512(seed_bytes + encoded).digest()
-        if digest[:diff_len] <= target:
+        digest = fnv1a_32(seed + encoded.decode())
+        if digest[:len(difficulty)] <= difficulty:
             return encoded.decode(), True
     fallback = "wQ8Lk5FbGpA2NcR9dShT6gYjU7VxZ4D" + pybase64.b64encode(f'"{seed}"'.encode()).decode()
     return fallback, False
@@ -199,9 +214,13 @@ def build_proof_token(
     user_agent: str,
     script_sources: Sequence[str] | None = None,
     data_build: str = "",
+    source_p: str = "",
 ) -> str:
-    config = build_pow_config(user_agent, script_sources=script_sources, data_build=data_build)
+    config = (json.loads(pybase64.b64decode(source_p[7:])) if source_p.startswith("gAAAAAC")
+              else build_pow_config(user_agent, script_sources=script_sources, data_build=data_build))
+    if len(config) != 25:
+        raise ValueError("requirements must contain 25 fields")
     answer, solved = _pow_generate(seed, difficulty, config)
     if not solved:
         raise RuntimeError(f"failed to solve proof token: difficulty={difficulty}")
-    return "gAAAAAB" + answer
+    return "gAAAAAB" + answer + "~S"

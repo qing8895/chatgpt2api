@@ -54,6 +54,7 @@ class AccountService:
         self._index = 0
         self._accounts = self._load_accounts()
         self._image_inflight: dict[str, int] = {}
+        self._image_cooldowns: dict[str, float] = {}
         self._token_aliases: dict[str, str] = {}
         self._cumulative_total = self._load_cumulative_total()
 
@@ -420,6 +421,8 @@ class AccountService:
             if rotated:
                 self._accounts.pop(old_token, None)
                 self._token_aliases[old_token] = new_token
+                if old_token in self._image_cooldowns:
+                    self._image_cooldowns[new_token] = self._image_cooldowns.pop(old_token)
                 old_inflight = int(self._image_inflight.pop(old_token, 0))
                 if old_inflight:
                     self._image_inflight[new_token] = int(self._image_inflight.get(new_token, 0)) + old_inflight
@@ -903,6 +906,7 @@ class AccountService:
                and self._account_matches_source_type(item, source_type)
                and (token := item.get("access_token") or "")
                and token not in excluded
+               and self._image_cooldowns.get(token, 0) <= time.monotonic()
         ]
 
     def _list_available_candidate_tokens(
@@ -940,6 +944,13 @@ class AccountService:
                     self._image_inflight[access_token] = int(self._image_inflight.get(access_token, 0)) + 1
                     return access_token
                 self._image_slot_condition.wait(timeout=1.0)
+
+    def cool_down_image_account(self, access_token: str) -> None:
+        """Local transient model availability; never persist quota/status changes."""
+        with self._image_slot_condition:
+            access_token = self._resolve_access_token_locked(access_token)
+            self._image_cooldowns[access_token] = time.monotonic() + 600
+            self._image_slot_condition.notify_all()
 
     def release_image_slot(self, access_token: str) -> None:
         if not access_token:

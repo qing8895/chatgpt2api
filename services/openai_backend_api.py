@@ -34,11 +34,15 @@ from utils.helper import (
 )
 from utils.log import logger
 from utils.pow import build_legacy_requirements_token, build_proof_token, parse_pow_resources
-from utils.turnstile import solve_turnstile_token
+from services.sentinel_solver_client import solver_request
 
 
 class InvalidAccessTokenError(RuntimeError):
     pass
+
+
+class AutoImageModelNotFoundError(UpstreamHTTPError):
+    """Only raised by an actual auto image conversation POST."""
 
 
 class ImageTaskError(RuntimeError):
@@ -411,12 +415,15 @@ class OpenAIBackendAPI:
                 self.user_agent,
                 script_sources=self.pow_script_sources,
                 data_build=self.pow_data_build,
+                source_p=source_p,
             )
 
         turnstile_token = ""
         turnstile_info = data.get("turnstile") or {}
         if turnstile_info.get("required") and turnstile_info.get("dx"):
-            turnstile_token = solve_turnstile_token(turnstile_info["dx"], source_p) or ""
+            turnstile_token = solver_request("/v1/turnstile", {"dx": turnstile_info["dx"], "p": source_p})["token"]
+        elif turnstile_info.get("required"):
+            raise RuntimeError("required Turnstile challenge is missing dx")
 
         return ChatRequirements(
             token=data.get("token", ""),
@@ -881,8 +888,8 @@ class OpenAIBackendAPI:
             "parent_message_id": new_uuid(),
             "model": upstream_model,
             "client_prepare_state": "success",
-            "timezone_offset_min": -480,
-            "timezone": "Asia/Shanghai",
+            "timezone_offset_min": getattr(self, "sentinel_environment", {}).get("timezone_offset_min", -480),
+            "timezone": getattr(self, "sentinel_environment", {}).get("timezone", "Asia/Shanghai"),
             "conversation_mode": {"kind": "primary_assistant"},
             "system_hints": ["picture_v2"],
             "partial_query": {
@@ -1022,8 +1029,8 @@ class OpenAIBackendAPI:
             "parent_message_id": new_uuid(),
             "model": upstream_model,
             "client_prepare_state": "sent",
-            "timezone_offset_min": -480,
-            "timezone": "Asia/Shanghai",
+            "timezone_offset_min": getattr(self, "sentinel_environment", {}).get("timezone_offset_min", -480),
+            "timezone": getattr(self, "sentinel_environment", {}).get("timezone", "Asia/Shanghai"),
             "conversation_mode": {"kind": "primary_assistant"},
             "enable_message_followups": True,
             "system_hints": ["picture_v2"],
@@ -1052,7 +1059,14 @@ class OpenAIBackendAPI:
             timeout=300,
             stream=True,
         )
-        ensure_ok(response, path)
+        try:
+            ensure_ok(response, path)
+        except UpstreamHTTPError as exc:
+            response.close()
+            if (upstream_model == "auto" and exc.status_code == 404
+                    and isinstance(exc.body, dict) and exc.body.get("detail") == "Model not found"):
+                raise AutoImageModelNotFoundError(path, 404, exc.body) from exc
+            raise
         return response
 
     def _get_conversation(self, conversation_id: str) -> Dict[str, Any]:
@@ -2561,6 +2575,9 @@ class OpenAIBackendAPI:
         for url in urls:
             response = self.session.get(url, timeout=120)
             ensure_ok(response, "image_download")
+            # Loading all pixels catches truncated files that Image.open alone accepts.
+            with Image.open(BytesIO(response.content)) as image:
+                image.load()
             if response.content not in images:
                 images.append(response.content)
         return images
@@ -2614,11 +2631,11 @@ class OpenAIBackendAPI:
         if not self.access_token:
             raise RuntimeError("access_token is required for image endpoints")
         self._report_progress("uploading")
-        references = [self._upload_image(image, f"image_{idx}.png") for idx, image in enumerate(images, start=1)]
         self._report_progress("bootstrapping")
         self._bootstrap()
         self._report_progress("getting_token")
         requirements = self._get_chat_requirements()
+        references = [self._upload_image(image, f"image_{idx}.png") for idx, image in enumerate(images, start=1)]
         self._report_progress("preparing_conversation")
         conduit_token = self._prepare_image_conversation(prompt, requirements, model)
         self._report_progress("starting_generation")
@@ -2674,7 +2691,16 @@ class OpenAIBackendAPI:
     def _get_chat_requirements(self) -> ChatRequirements:
         """获取当前模式对话所需的 sentinel token（prepare + finalize 两步流程）。"""
         base = "/backend-api/sentinel/chat-requirements" if self.access_token else "/backend-anon/sentinel/chat-requirements"
-        p_token = build_legacy_requirements_token(self.user_agent, self.pow_script_sources, self.pow_data_build)
+        environment = solver_request("/v1/prepare", {})
+        p_token = environment["p"]
+        self.sentinel_environment = environment
+        self.user_agent = environment["user_agent"]
+        self.session.headers["User-Agent"] = self.user_agent
+        self.session.headers["Sec-Ch-Ua"] = environment["sec_ch_ua"]
+        self.session.headers["Sec-Ch-Ua-Platform"] = json.dumps(environment["platform"])
+        for key in list(self.session.headers):
+            if key.lower() in {"sec-ch-ua-full-version", "sec-ch-ua-full-version-list", "sec-ch-ua-platform-version"}:
+                del self.session.headers[key]
 
         prepare_path = base + "/prepare"
         response = self.session.post(
@@ -2685,6 +2711,8 @@ class OpenAIBackendAPI:
         )
         ensure_ok(response, "chat_requirements_prepare")
         prepare_data = response.json()
+        if not prepare_data.get("prepare_token"):
+            raise RuntimeError("missing chat requirements prepare token")
 
         if (prepare_data.get("arkose") or {}).get("required"):
             raise RuntimeError("chat requirements requires arkose token, which is not implemented")
@@ -2698,12 +2726,15 @@ class OpenAIBackendAPI:
                 self.user_agent,
                 script_sources=self.pow_script_sources,
                 data_build=self.pow_data_build,
+                source_p=p_token,
             )
 
         turnstile_token = ""
         turnstile_info = prepare_data.get("turnstile") or {}
         if turnstile_info.get("required") and turnstile_info.get("dx"):
-            turnstile_token = solve_turnstile_token(turnstile_info["dx"], p_token) or ""
+            turnstile_token = solver_request("/v1/turnstile", {"dx": turnstile_info["dx"], "p": p_token})["token"]
+        elif turnstile_info.get("required"):
+            raise RuntimeError("required Turnstile challenge is missing dx")
 
         finalize_path = base + "/finalize"
         response = self.session.post(
@@ -2711,8 +2742,8 @@ class OpenAIBackendAPI:
             headers=self._headers(finalize_path, {"Content-Type": "application/json"}),
             json={
                 "prepare_token": prepare_data.get("prepare_token", ""),
-                "proof_token": proof_token,
-                "turnstile_token": turnstile_token,
+                "proofofwork": proof_token,
+                "turnstile": turnstile_token,
             },
             timeout=30,
         )

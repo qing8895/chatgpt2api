@@ -1,5 +1,8 @@
 .git
 .gitignore
+.env
+.env.*
+data
 .idea
 .venv
 __pycache__

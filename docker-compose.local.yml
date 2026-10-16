@@ -5,14 +5,23 @@ services:
       dockerfile: Dockerfile
     image: chatgpt2api:local
     container_name: chatgpt2api-local
+    depends_on:
+      sentinel_solver:
+        condition: service_healthy
+    networks:
+      - default
+      - sentinel_private
     ports:
       - "8000:80"
     volumes:
       - ./data:/app/data
       - ./config.json:/app/config.json
     environment:
-      STORAGE_BACKEND: sqlite
-      DATABASE_URL: sqlite:////app/data/accounts.db
+      SENTINEL_SOLVER_URL: http://sentinel_solver:8080
+      SENTINEL_SOLVER_KEY: ${SENTINEL_SOLVER_KEY:?Set a private solver key}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-json}
+      DATABASE_URL: ${DATABASE_URL:-}
+      CHATGPT2API_AUTH_KEY: ${CHATGPT2API_AUTH_KEY:-}
     # 存储后端配置 (可选值: json, sqlite, postgres, git)
     # environment:
     #   STORAGE_BACKEND: json
@@ -32,3 +41,34 @@ services:
 
     # 基础 URL (可选)
     #   CHATGPT2API_BASE_URL: https://your-domain.com
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:80/',timeout=5)"]
+      interval: 10s
+      timeout: 10s
+      retries: 8
+      start_period: 20s
+
+  sentinel_solver:
+    init: true
+    build: ./sentinel_solver
+    restart: unless-stopped
+    shm_size: 1gb
+    environment:
+      SENTINEL_SOLVER_KEY: ${SENTINEL_SOLVER_KEY:?Set a private solver key}
+      SENTINEL_SOLVER_TIMEZONE: ${SENTINEL_SOLVER_TIMEZONE:?Set verified egress timezone}
+      SENTINEL_SOLVER_PROXY: ${SENTINEL_SOLVER_PROXY:-}
+    # No host ports. Only the app can reach this service on the private network.
+    networks:
+      - sentinel_private
+      - default
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,urllib.request; r=urllib.request.Request('http://127.0.0.1:8080/health',headers={'Authorization':'Bearer '+os.environ['SENTINEL_SOLVER_KEY']}); urllib.request.urlopen(r,timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+networks:
+  sentinel_private:
+    internal: true

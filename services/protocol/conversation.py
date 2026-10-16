@@ -14,7 +14,7 @@ import tiktoken
 from services.account_service import account_service
 from services.config import config
 from services.image_storage_service import image_storage_service
-from services.openai_backend_api import ImageContentPolicyError, ImagePollTimeoutError, OpenAIBackendAPI
+from services.openai_backend_api import AutoImageModelNotFoundError, ImageContentPolicyError, ImagePollTimeoutError, OpenAIBackendAPI
 from utils.helper import (
     IMAGE_MODELS,
     codex_image_tool_model,
@@ -1427,6 +1427,21 @@ def _generate_single_image(
                 return outputs
             account_service.mark_image_result(token, True)
             return outputs
+        except AutoImageModelNotFoundError as exc:
+            account_service.cool_down_image_account(token)
+            account_service.release_image_slot(token)
+            # Share the existing account-switch budget with poll failures.
+            poll_timeout_retry_count += 1
+            logger.warning({
+                "event": "image_auto_model_not_found",
+                "account_email": account_email,
+                "cooldown_seconds": 600,
+                "retry_count": poll_timeout_retry_count,
+                "index": index,
+            })
+            if not emitted_for_token and poll_timeout_retry_count <= MAX_POLL_TIMEOUT_RETRIES:
+                continue
+            raise ImageGenerationError(str(exc), account_email=account_email) from exc
         except ImagePollTimeoutError as exc:
             account_service.mark_image_result(token, False)
             if account_email:
